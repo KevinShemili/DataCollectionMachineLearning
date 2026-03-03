@@ -1,0 +1,12 @@
+psutil
+tqdm
+numpy
+pandas
+scikit-learn
+matplotlib
+jupyter
+ipykernel
+black
+tensorflow
+seaborn
+flask
