@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 
 def collect_sample(state):
-    current_time = time.time()
+    sample_start_time = time.time()
 
     # 1. CPU Metrics
     per_core = psutil.cpu_percent(interval=None, percpu=True)
@@ -28,7 +28,7 @@ def collect_sample(state):
 
     # Wrt to disk & network, these are lifetime counters, so
     # we convert manually into per-second rates following this formula:
-    # rate = (current_value - previous_value) / (current_time - previous_time)
+    # rate = (current_value - previous_value) / (sample_start_time - previous_time)
     # Source: https://psutil.readthedocs.io/en/latest/#psutil.net_io_counters
     if (
         state["prev_time"] is None
@@ -42,7 +42,7 @@ def collect_sample(state):
         net_sent_pps = 0.0
         net_recv_pps = 0.0
     else:
-        time_between_samples = current_time - state["prev_time"]
+        time_between_samples = sample_start_time - state["prev_time"]
 
         disk_read_bps = (disk_io.read_bytes - state["prev_disk"].read_bytes) / time_between_samples  # type: ignore
         disk_write_bps = (disk_io.write_bytes - state["prev_disk"].write_bytes) / time_between_samples  # type: ignore
@@ -62,13 +62,13 @@ def collect_sample(state):
             net_io.packets_recv - state["prev_net"].packets_recv
         ) / time_between_samples
 
-    state["prev_time"] = current_time
+    state["prev_time"] = sample_start_time
     state["prev_disk"] = disk_io
     state["prev_net"] = net_io
 
     return {
         "ts_iso_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "ts_unix": current_time,
+        "ts_unix": sample_start_time,
         "cpu_percent": cpu_percent,
         "cpu_percent_max": cpu_percent_max,
         "cpu_percent_min": cpu_percent_min,
