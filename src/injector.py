@@ -3,6 +3,7 @@ import time
 import socket
 import tempfile
 from datetime import datetime, timezone
+import threading
 
 
 # timestamp with second precision
@@ -10,48 +11,87 @@ def time_now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def create_payload(size_mb):
-    # Create an arbitrary payload file of a specified size,
-    # and store this file in the OS's temporary directory.
-    path = os.path.join(
-        tempfile.gettempdir(), "dcml_payload_" + str(size_mb) + "mb.bin"
-    )
+def create_payload_pool(size_mb, count):
 
-    # Target file size in bytes
-    target = size_mb * 1024 * 1024
+    payload_paths = []
 
-    # Check if payload already exists
-    if os.path.exists(path):
-        if os.path.getsize(path) == target:
-            return path
+    for i in range(count):
 
-    # Repeating block used to fill contents of file
-    block = b"DCML_EXFIL_" * 8192  # ~72 KB
+        name = "dcml_payload_" + str(i) + "_" + str(size_mb) + "mb.bin"
 
-    file = open(path, "wb")
-    try:
-        written = 0
-        # Write until we reach aimed target size
-        while written < target:
-            remaining = target - written
+        path = os.path.join(tempfile.gettempdir(), name)
 
-            # Write full blocks when possible,
-            # else write a final partial block
-            if remaining >= len(block):
-                chunk = block
-            else:
-                chunk = block[:remaining]
+        target = size_mb * 1024 * 1024
 
-            file.write(chunk)
+        if os.path.exists(path):
+            if os.path.getsize(path) == target:
+                payload_paths.append(path)
+                continue
 
-            written = written + len(chunk)
-    finally:
-        file.close()
+        block = b"DCML_EXFIL_" * 8192
 
-    return path
+        file = open(path, "wb")
+
+        try:
+            written = 0
+
+            while written < target:
+
+                remaining = target - written
+
+                if remaining >= len(block):
+                    chunk = block
+                else:
+                    chunk = block[:remaining]
+
+                file.write(chunk)
+
+                written = written + len(chunk)
+
+        finally:
+            file.close()
+
+        payload_paths.append(path)
+
+    return payload_paths
 
 
-def run_exfiltration(total_duration, rate_mbs, payload_path, host, port, chunk_mb):
+def disk_reader_worker(payload_paths, stop_flag):
+
+    read_size = 1024 * 1024
+
+    index = 0
+
+    while True:
+
+        if stop_flag["stop"] is True:
+            break
+
+        path = payload_paths[index]
+
+        file = open(path, "rb")
+
+        try:
+            while True:
+
+                data = file.read(read_size)
+
+                if not data:
+                    break
+
+                # throttle disk load to keep around ~20%
+                time.sleep(0.002)
+
+        finally:
+            file.close()
+
+        index = index + 1
+
+        if index >= len(payload_paths):
+            index = 0
+
+
+def run_exfiltration(total_duration, rate_mbs, payload_paths, host, port):
     # We want to mimic exfiltration, so what we have done is:
     # 1. Read data from the a file -> Generates disk reads
     # 2. Send data over the network to a malicious receiver -> Generates network traffic
@@ -62,60 +102,79 @@ def run_exfiltration(total_duration, rate_mbs, payload_path, host, port, chunk_m
     start_time_readable = time_now_iso()
     start_time = time.time()
 
-    # Size of each piece of data we send at once
-    # Convert to bytes, such that it is compatible with API call
-    chunk_bytes = chunk_mb * 1024 * 1024
-
-    # Convert configured MB/s to bytes/s
-    rate_bytes = rate_mbs * 1024 * 1024
-
-    # Enforce a speed limit on the sender following seconds = bytes / speed formula
-    # Results in a smoother outbound traffic
-    target_seconds_per_chunk = float(chunk_bytes) / float(rate_bytes)
-
     # Create TCP socket & connect to receiver
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
 
+    # Convert configured MB/s to bytes/s
+    rate_bytes = rate_mbs * 1024 * 1024
+
+    payload_path = payload_paths[0]
+    file = open(payload_path, "rb")
+    payload_data = file.read()
+    file.close()
+    payload_size = len(payload_data)
+
+    send_block_size = 256 * 1024
+
+    # control disk reader thread
+    stop_flag = {"stop": False}
+
+    disk_thread = threading.Thread(
+        target=disk_reader_worker, args=(payload_paths, stop_flag)
+    )
+    disk_thread.start()
+
     sent = 0
     chunks = 0
+    end_time = time.time() + total_duration
+    pointer = 0
 
-    # Open payload file for repeated reads -> Thus generating sustained disk reads activity
-    file = open(payload_path, "rb", buffering=0)
     try:
-        # Run until defined total duration
-        end_time = time.time() + total_duration
-        while time.time() < end_time:
-            # Read new next chunk every time & if we reach end, turn back to start
-            chunk = file.read(chunk_bytes)
-            if not chunk:
-                file.seek(0)
-                chunk = file.read(chunk_bytes)
 
-            # Send chunk down socket & measure how long it takes
-            socket_send_time = time.time()
-            sock.sendall(chunk)
-            sent = sent + len(chunk)
+        while True:
+
+            now = time.time()
+
+            if now >= end_time:
+                break
+
+            send_start = time.time()
+
+            if pointer + send_block_size > payload_size:
+                pointer = 0
+
+            block = payload_data[pointer : pointer + send_block_size]
+
+            sock.sendall(block)
+
+            pointer = pointer + send_block_size
+
+            sent = sent + len(block)
             chunks = chunks + 1
 
-            # Measure how long sending took
-            elapsed_socket_send_time = time.time() - socket_send_time
+            elapsed = time.time() - send_start
 
-            # Compute time we need to sleep,
-            # such that the sending of a chunk, accounting for the time spent transmitting it ~approximates to target_seconds_per_chunk
-            # Ensure regular intervals & prevents sender sending at maximum possible speed
-            sleep_for = target_seconds_per_chunk - elapsed_socket_send_time
+            expected = float(len(block)) / float(rate_bytes)
+
+            sleep_for = expected - elapsed
+
             if sleep_for > 0:
                 time.sleep(sleep_for)
+
     finally:
+
+        stop_flag["stop"] = True
+
+        disk_thread.join()
+
         try:
             sock.shutdown(socket.SHUT_WR)
         except Exception:
             pass
-        sock.close()
-        file.close()
 
-    # Record injection end time
+        sock.close()
+
     end_iso = time_now_iso()
     end_unix = time.time()
 
@@ -131,6 +190,4 @@ def run_exfiltration(total_duration, rate_mbs, payload_path, host, port, chunk_m
         "tcp_chunks": chunks,
         "receiver_host": host,
         "receiver_port": port,
-        "payload_file": payload_path,
-        "chunk_mb": chunk_mb,
     }
