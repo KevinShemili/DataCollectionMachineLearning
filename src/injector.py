@@ -4,6 +4,8 @@ import socket
 import tempfile
 from datetime import datetime, timezone
 import threading
+import ctypes
+import ctypes.wintypes
 
 
 # timestamp with second precision
@@ -58,7 +60,11 @@ def create_payload_pool(size_mb, count):
 
 def disk_reader_worker(payload_paths, stop_flag):
 
-    read_size = 1024 * 1024
+    FILE_FLAG_NO_BUFFERING = 0x20000000
+    GENERIC_READ = 0x80000000
+    OPEN_EXISTING = 3
+
+    read_size = 512 * 1024
 
     index = 0
 
@@ -69,21 +75,30 @@ def disk_reader_worker(payload_paths, stop_flag):
 
         path = payload_paths[index]
 
-        file = open(path, "rb")
+        handle = ctypes.windll.kernel32.CreateFileW(
+            path, GENERIC_READ, 0, None, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, None
+        )
+
+        buf = ctypes.create_string_buffer(read_size)
+        bytes_read = ctypes.wintypes.DWORD(0)
 
         try:
             while True:
 
-                data = file.read(read_size)
-
-                if not data:
+                if stop_flag["stop"] is True:
                     break
 
-                # throttle disk load to keep around ~20%
+                result = ctypes.windll.kernel32.ReadFile(
+                    handle, buf, read_size, ctypes.byref(bytes_read), None
+                )
+
+                if result == 0 or bytes_read.value == 0:
+                    break
+
                 time.sleep(0.002)
 
         finally:
-            file.close()
+            ctypes.windll.kernel32.CloseHandle(handle)
 
         index = index + 1
 
