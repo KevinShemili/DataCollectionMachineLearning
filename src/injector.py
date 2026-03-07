@@ -130,8 +130,7 @@ def run_exfiltration(total_duration, rate_mbs, payload_paths, host, port):
     file.close()
     payload_size = len(payload_data)
 
-    send_block_size = 256 * 1024
-
+    send_block_size = 4 * 1024 * 1024
     # control disk reader thread
     stop_flag = {"stop": False}
 
