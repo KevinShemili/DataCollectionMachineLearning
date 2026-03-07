@@ -5,10 +5,10 @@ import random
 import threading
 
 from monitor import run_monitor
-from injector import create_payload, run_exfiltration
+from injector import create_payload_pool, run_exfiltration
 
 # CONSTANTS -> Experiment Settings
-DURATION_HOURS = 6
+DURATION_HOURS = 0.4
 SAMPLING_INTERVAL_SECONDS = 1.0
 
 # Random idle duration between anomalies
@@ -20,17 +20,15 @@ ANOMALY_MIN_SECONDS = 60
 ANOMALY_MAX_SECONDS = 240
 
 # Host & Port of malicous receiver
-RECEIVER_HOST = "192.168.1.40"
+RECEIVER_HOST = "172.20.10.7"
 RECEIVER_PORT = 5001
 
 # Target outbound throughput
-EXFIL_RATE_MBPS = 30.0
+EXFIL_RATE_MBPS = 40.0
 
 # Size of payload file used to generate disk reads
-PAYLOAD_SIZE_MB = 4096
-
-# TCP send chunk size
-TCP_CHUNK_MB = 4
+PAYLOAD_SIZE_MB = 800
+PAYLOAD_COUNT = 5
 
 DATA_DIR = "data"
 UNPROCESSED_DIR = os.path.join(DATA_DIR, "collected")
@@ -89,7 +87,7 @@ def run_experiment():
     time.sleep(2)
 
     # Prepare payload file
-    payload_path = create_payload(PAYLOAD_SIZE_MB)
+    payload_paths = create_payload_pool(PAYLOAD_SIZE_MB, PAYLOAD_COUNT)
 
     injections = []
 
@@ -102,10 +100,9 @@ def run_experiment():
         entry = run_exfiltration(
             total_duration=event["duration_s"],
             rate_mbs=EXFIL_RATE_MBPS,
-            payload_path=payload_path,
+            payload_paths=payload_paths,
             host=RECEIVER_HOST,
             port=RECEIVER_PORT,
-            chunk_mb=TCP_CHUNK_MB,
         )
         injections.append(entry)
 
