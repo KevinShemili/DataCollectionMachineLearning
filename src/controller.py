@@ -8,7 +8,7 @@ from monitor import run_monitor
 from injector import create_payload, run_exfiltration
 
 # CONSTANTS -> Experiment Settings
-DURATION_HOURS = 0.2
+DURATION_HOURS = 6
 SAMPLING_INTERVAL_SECONDS = 1.0
 
 # Random idle duration between anomalies
@@ -20,14 +20,14 @@ ANOMALY_MIN_SECONDS = 60
 ANOMALY_MAX_SECONDS = 240
 
 # Host & Port of malicous receiver
-RECEIVER_HOST = "172.20.10.7"
+RECEIVER_HOST = "192.168.1.40"
 RECEIVER_PORT = 5001
 
 # Target outbound throughput
 EXFIL_RATE_MBPS = 30.0
 
 # Size of payload file used to generate disk reads
-PAYLOAD_SIZE_MB = 256
+PAYLOAD_SIZE_MB = 4096
 
 # TCP send chunk size
 TCP_CHUNK_MB = 4

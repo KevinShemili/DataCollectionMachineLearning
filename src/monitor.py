@@ -8,22 +8,11 @@ from tqdm import tqdm
 def collect_sample(state):
     sample_start_time = time.time()
 
-    # 1. CPU Metrics
-    per_core = psutil.cpu_percent(interval=None, percpu=True)
-    cpu_percent = sum(per_core) / len(per_core)
-    cpu_percent_max = max(per_core)
-    cpu_percent_min = min(per_core)
-    freq = psutil.cpu_freq()
-
-    # 2. Memory Metrics
-    mem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-
-    # 3. Disk Metrics
+    # 1. Disk Metrics
     disk_io = psutil.disk_io_counters()
     disk_usage = psutil.disk_usage("C:\\")
 
-    # 4. Network Metrics
+    # 2. Network Metrics
     net_io = psutil.net_io_counters()
 
     # Wrt to disk & network, these are lifetime counters, so
@@ -69,22 +58,13 @@ def collect_sample(state):
     return {
         "ts_iso_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "ts_unix": sample_start_time,
-        "cpu_percent": cpu_percent,
-        "cpu_percent_max": cpu_percent_max,
-        "cpu_percent_min": cpu_percent_min,
-        "cpu_frequency_mhz": freq.current,
-        "cpu_count": psutil.cpu_count(),
-        "memory_used": mem.used,
-        "memory_available": mem.available,
-        "memory_percent": mem.percent,
-        "memory_total": mem.total,
-        "swap_used": swap.used,
-        "swap_percent": swap.percent,
+        # Disk
         "disk_read_bytes_per_s": disk_read_bps,
         "disk_write_bytes_per_s": disk_write_bps,
         "disk_read_ops_per_s": disk_read_ops,
         "disk_write_ops_per_s": disk_write_ops,
         "disk_usage_percent_c": disk_usage.percent,
+        # Network
         "net_bytes_sent_per_s": net_sent_bps,
         "net_bytes_recv_per_s": net_recv_bps,
         "net_packets_sent_per_s": net_sent_pps,

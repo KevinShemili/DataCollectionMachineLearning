@@ -24,31 +24,33 @@ def main():
     sock.listen(1)
 
     print(f"[EXFILTRATOR] Listening on: {HOST}:{PORT}")
-    conn, addr = sock.accept()
-    print(f"[EXFILTRATOR] Connection from: {addr}")
-
-    total = 0
-    start = time.time()
-    last = start
 
     while True:
-        data = conn.recv(1024 * 256)
-        if not data:
-            break
-        total += len(data)
 
-        now = time.time()
+        conn, addr = sock.accept()
+        print(f"[EXFILTRATOR] Connection from: {addr}")
 
-        if now - last >= 1.0:
-            mbps = (total / (now - start)) / (1024 * 1024)
-            print(
-                f"[EXFILTRATOR] Average: {mbps:.2f} MB/s  Total: {total/1024/1024:.1f} MB"
-            )
-            last = now
+        total = 0
+        start = time.time()
+        last = start
 
-    conn.close()
-    sock.close()
-    print("[EXFILTRATOR] Done")
+        while True:
+            data = conn.recv(1024 * 256)
+            if not data:
+                break
+            total += len(data)
+
+            now = time.time()
+
+            if now - last >= 1.0:
+                mbps = (total / (now - start)) / (1024 * 1024)
+                print(
+                    f"[EXFILTRATOR] Average: {mbps:.2f} MB/s  Total: {total/1024/1024:.1f} MB"
+                )
+                last = now
+
+        conn.close()
+        print("[EXFILTRATOR] Session finished, waiting for next connection")
 
 
 if __name__ == "__main__":

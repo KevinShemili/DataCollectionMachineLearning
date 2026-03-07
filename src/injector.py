@@ -81,7 +81,7 @@ def run_exfiltration(total_duration, rate_mbs, payload_path, host, port, chunk_m
     chunks = 0
 
     # Open payload file for repeated reads -> Thus generating sustained disk reads activity
-    file = open(payload_path, "rb")
+    file = open(payload_path, "rb", buffering=0)
     try:
         # Run until defined total duration
         end_time = time.time() + total_duration
@@ -90,7 +90,7 @@ def run_exfiltration(total_duration, rate_mbs, payload_path, host, port, chunk_m
             chunk = file.read(chunk_bytes)
             if not chunk:
                 file.seek(0)
-                continue
+                chunk = file.read(chunk_bytes)
 
             # Send chunk down socket & measure how long it takes
             socket_send_time = time.time()

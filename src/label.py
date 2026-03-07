@@ -76,8 +76,8 @@ def label_csv(csv_path, log_path, labeled_path):
 
 if __name__ == "__main__":
 
-    csv_path = "data/collected/monitoring_20260303_160907.csv"
-    log_path = "logs/injection_log_20260303_160907.json"
-    labeled_path = "data/labeled/labeled_20260303_160907.csv"
+    csv_path = "data/dataset/monitoring_20260305_225710.csv"
+    log_path = "data/log/injection_log_20260305_225710.json"
+    labeled_path = "data/labeled/labeled_20260305_225710.csv"
 
     label_csv(csv_path, log_path, labeled_path)
