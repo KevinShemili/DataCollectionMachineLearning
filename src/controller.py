@@ -1,4 +1,3 @@
-import os
 import time
 import json
 import random
@@ -7,56 +6,45 @@ import threading
 from monitor import run_monitor
 from injector import create_payload_pool, run_exfiltration
 
-# CONSTANTS -> Experiment Settings
-DURATION_HOURS = 0.4
-SAMPLING_INTERVAL_SECONDS = 1.0
-
-# Random idle duration between anomalies
-IDLE_MIN_SECONDS = 180
-IDLE_MAX_SECONDS = 480
-
-# Random anomaly duration window
-ANOMALY_MIN_SECONDS = 60
-ANOMALY_MAX_SECONDS = 240
-
-# Host & Port of malicous receiver
-RECEIVER_HOST = "172.20.10.7"
-RECEIVER_PORT = 5001
-
-# Target outbound throughput
-EXFIL_RATE_MBPS = 40.0
-
-# Size of payload file used to generate disk reads
-PAYLOAD_SIZE_MB = 800
-PAYLOAD_COUNT = 5
-
-DATA_DIR = "data"
-UNPROCESSED_DIR = os.path.join(DATA_DIR, "collected")
-LOGS_DIR = "logs"
+DURATION_HOURS = 0.1  # total runtime
+SAMPLING_INTERVAL_SECONDS = 1.0  # 1 HZ sampling rate
+IDLE_MIN_SECONDS = 180  # minimum normal duration - 3 min
+IDLE_MAX_SECONDS = 480  # maximum normal duration - 8 min
+ANOMALY_MIN_SECONDS = 60  # minimum anomaly duration - 1 min
+ANOMALY_MAX_SECONDS = 240  # maximum anomaly duration - 4 min
+RECEIVER_HOST = "172.20.10.7"  # ip address of VM
+RECEIVER_PORT = 5001  # port number of VM
+EXFIL_RATE_MBPS = 40.0  # outbound throughput traget
+PAYLOAD_SIZE_MB = 800  # size of trash payloads
+PAYLOAD_COUNT = 5  # nummber of payloads
 
 
 def build_schedule(total_duration):
     # Build a randomized schedule of idle & anomaly periods
 
     schedule = []
-    elapsed = 0
+    filled_schedule = 0
 
-    while elapsed < total_duration:
+    while filled_schedule < total_duration:
 
+        # Generate a random idle duration & add it to schedule
         idle_duration = random.randint(IDLE_MIN_SECONDS, IDLE_MAX_SECONDS)
-        if elapsed + idle_duration > total_duration:
-            idle_duration = total_duration - elapsed
-        schedule.append({"type": "idle", "duration_s": idle_duration})
-        elapsed = elapsed + idle_duration
 
-        if elapsed >= total_duration:
+        if filled_schedule + idle_duration > total_duration:
+            idle_duration = total_duration - filled_schedule
+        schedule.append({"type": "idle", "duration": idle_duration})
+        filled_schedule = filled_schedule + idle_duration
+
+        if filled_schedule >= total_duration:
             break
 
+        # Generate a random anomaly duration & add it to schedule
         anomaly_duration = random.randint(ANOMALY_MIN_SECONDS, ANOMALY_MAX_SECONDS)
-        if elapsed + anomaly_duration > total_duration:
-            anomaly_duration = total_duration - elapsed
-        schedule.append({"type": "exfiltration_tcp_vm", "duration_s": anomaly_duration})
-        elapsed = elapsed + anomaly_duration
+
+        if filled_schedule + anomaly_duration > total_duration:
+            anomaly_duration = total_duration - filled_schedule
+        schedule.append({"type": "anomaly", "duration": anomaly_duration})
+        filled_schedule = filled_schedule + anomaly_duration
 
     return schedule
 
@@ -69,36 +57,41 @@ def run_experiment():
     csv_path = "data/dataset/monitoring_" + run_id + ".csv"
     log_path = "data/log/injection_log_" + run_id + ".json"
 
-    print("[CONTROLLER] run_id=" + run_id)
-    print("[CONTROLLER] receiver=" + RECEIVER_HOST + ":" + str(RECEIVER_PORT))
+    print("[CONTROLLER] RUN ID: " + run_id)
 
-    # Build the random schedule
+    # Build schedule
     schedule = build_schedule(total_duration)
 
-    # Start monitor in a separate thread
+    # Create monitor as a separate thread
     monitor_thread = threading.Thread(
         target=run_monitor,
         args=(csv_path, total_duration, SAMPLING_INTERVAL_SECONDS),
         daemon=False,
     )
+
+    # Write out the trash payload files before monitoring starts,
+    # this ensures monitor won't capture payload generation disk writes
+    payload_paths = create_payload_pool(PAYLOAD_SIZE_MB, PAYLOAD_COUNT)
+
+    # Start actual monitor thread
     monitor_thread.start()
 
     # Allow monitor to initialize & start writing rows
     time.sleep(2)
 
-    # Prepare payload file
-    payload_paths = create_payload_pool(PAYLOAD_SIZE_MB, PAYLOAD_COUNT)
-
     injections = []
 
     # Execute scheduled events
     for event in schedule:
+
+        # Sleep if event is idle system
         if event["type"] == "idle":
-            time.sleep(event["duration_s"])
+            time.sleep(event["duration"])
             continue
 
+        # Inject if event is injection
         entry = run_exfiltration(
-            total_duration=event["duration_s"],
+            total_duration=event["duration"],
             rate_mbs=EXFIL_RATE_MBPS,
             payload_paths=payload_paths,
             host=RECEIVER_HOST,
@@ -106,10 +99,11 @@ def run_experiment():
         )
         injections.append(entry)
 
-    # Join monitoring thread
+    # After scheduling has completed,
+    # join monitoring thread
     monitor_thread.join()
 
-    # Persist injection log to JSON
+    # Persist injection log to JSON, to enable labeling
     file = open(log_path, "w", encoding="utf-8")
     try:
         json.dump({"run_id": run_id, "injections": injections}, file, indent=2)

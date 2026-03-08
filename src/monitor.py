@@ -15,8 +15,8 @@ def collect_sample(state):
     # 2. Network Metrics
     net_io = psutil.net_io_counters()
 
-    # Wrt to disk & network, these are lifetime counters, so
-    # we convert manually into per-second rates following this formula:
+    # Disk & network are lifetime counters, so
+    # we convert manually into per-second rates following the formula:
     # rate = (current_value - previous_value) / (sample_start_time - previous_time)
     # Source: https://psutil.readthedocs.io/en/latest/#psutil.net_io_counters
     if (
@@ -51,12 +51,13 @@ def collect_sample(state):
             net_io.packets_recv - state["prev_net"].packets_recv
         ) / time_between_samples
 
+    # Set the fields for the next iteration
     state["prev_time"] = sample_start_time
     state["prev_disk"] = disk_io
     state["prev_net"] = net_io
 
     return {
-        "ts_iso_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Timestamp
         "ts_unix": sample_start_time,
         # Disk
         "disk_read_bytes_per_s": disk_read_bps,
@@ -78,37 +79,34 @@ def run_monitor(output_path, total_duration, sampling_interval):
         f"[MONITOR] Started. Total Duration: {total_duration}s, with sampling interval: {sampling_interval}s."
     )
 
-    # Warm-up call so first real cpu_percent() is not biased
-    # Source: https://psutil.readthedocs.io/en/latest/#psutil.cpu_percent
-    psutil.cpu_percent(interval=0.1, percpu=True)
-
     state = {"prev_time": None, "prev_disk": None, "prev_net": None}
 
-    current_time = time.time()
-    next_deadline = current_time + sampling_interval
+    monitor_start_time = time.time()
+    next_sampling_deadline = monitor_start_time + sampling_interval
 
     with open(output_path, "w", newline="", encoding="utf-8") as f:
 
         # Init state & define CSV header
-        first = collect_sample(state)
-        writer = csv.DictWriter(f, fieldnames=list(first.keys()))
+        first_sample = collect_sample(state)
+        writer = csv.DictWriter(f, fieldnames=list(first_sample.keys()))
         writer.writeheader()
-        writer.writerow(first)
+        writer.writerow(first_sample)
         f.flush()
+        samples = 1
 
+        # Update progress bar
         progress_bar = tqdm(
             total=total_duration, desc="Monitoring", unit="s", dynamic_ncols=True
         )
         last_second = 0
-        samples = 1
 
         while True:
             sample_start_time = time.time()
-            if sample_start_time - current_time >= total_duration:
+            if sample_start_time - monitor_start_time >= total_duration:
                 break
 
             # Address drift issue, by sleeping only necessary time until next deadline
-            sleep_for = next_deadline - time.time()
+            sleep_for = next_sampling_deadline - time.time()
             if sleep_for > 0:
                 time.sleep(sleep_for)
 
@@ -119,13 +117,13 @@ def run_monitor(output_path, total_duration, sampling_interval):
             samples += 1
 
             # Update progress bar
-            current_second = int(time.time() - current_time)
+            current_second = int(time.time() - monitor_start_time)
             delta = current_second - last_second
             if delta > 0:
                 progress_bar.update(delta)
                 last_second = current_second
 
-            next_deadline += sampling_interval
+            next_sampling_deadline += sampling_interval
 
         progress_bar.close()
 
