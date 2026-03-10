@@ -26,7 +26,6 @@ def main():
     print(f"[EXFILTRATOR] Listening on: {HOST}:{PORT}")
 
     while True:
-
         conn, addr = sock.accept()
         print(f"[EXFILTRATOR] Connection from: {addr}")
 
@@ -48,7 +47,6 @@ def main():
                     f"[EXFILTRATOR] Average: {mbps:.2f} MB/s  Total: {total/1024/1024:.1f} MB"
                 )
                 last = now
-
         conn.close()
         print("[EXFILTRATOR] Session finished, waiting for next connection")
 
