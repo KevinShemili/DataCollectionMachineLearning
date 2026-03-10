@@ -6,7 +6,7 @@ import threading
 from monitor import run_monitor
 from injector import create_payload_pool, run_exfiltration
 
-DURATION_HOURS = 0.1  # total runtime
+DURATION_HOURS = 6  # total runtime
 SAMPLING_INTERVAL_SECONDS = 1.0  # 1 HZ sampling rate
 IDLE_MIN_SECONDS = 180  # minimum normal duration - 3 min
 IDLE_MAX_SECONDS = 480  # maximum normal duration - 8 min
