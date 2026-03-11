@@ -6,13 +6,13 @@ import threading
 from monitor import run_monitor
 from injector import create_payload_pool, run_exfiltration
 
-DURATION_HOURS = 6  # total runtime
+DURATION_HOURS = 3  # total runtime
 SAMPLING_INTERVAL_SECONDS = 1.0  # 1 HZ sampling rate
 IDLE_MIN_SECONDS = 180  # minimum normal duration - 3 min
 IDLE_MAX_SECONDS = 480  # maximum normal duration - 8 min
 ANOMALY_MIN_SECONDS = 60  # minimum anomaly duration - 1 min
 ANOMALY_MAX_SECONDS = 240  # maximum anomaly duration - 4 min
-RECEIVER_HOST = "172.20.10.7"  # ip address of VM
+RECEIVER_HOST = "192.168.1.40"  # ip address of VM
 RECEIVER_PORT = 5001  # port number of VM
 EXFIL_RATE_MBPS = 40.0  # outbound throughput traget
 PAYLOAD_SIZE_MB = 800  # size of trash payloads
